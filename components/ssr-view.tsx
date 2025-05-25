@@ -25,7 +25,7 @@ const fetchSavedLinks = async (terms: string | undefined, token: string) => {
 export default async function Home({
   searchParams,
 }: {
-  searchParams: { terms: string };
+  searchParams: Promise<{ terms: string }>;
 }) {
   const terms = (await searchParams).terms;
   const { userId, getToken } = await auth();
