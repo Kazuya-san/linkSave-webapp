@@ -9,7 +9,7 @@ type Failure<E> = {
 };
 
 type Result<T, E = Error> = Success<T> | Failure<E>;
-
+//
 export async function tryCatch<T, E = Error>(
   promise: Promise<T>
 ): Promise<Result<T, E>> {
