@@ -1,120 +1,142 @@
 import { GoogleGenAI } from "@google/genai";
-import { verifyToken } from "@clerk/nextjs/server";
-import { tryCatch } from "@/utils/tryCatch";
+import { auth } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
+
+import {
+  buildArticleInsert,
+  buildSummarizationPrompt,
+  parseSummaryResponse,
+} from "@/lib/articles/service";
+import type { ArticleDraftInput } from "@/lib/articles/types";
 import { createClerkSupabaseClientSsr } from "@/utils/supabase/server";
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY ?? "",
-});
+const model = process.env.GEMINI_MODEL ?? "gemini-3.1-flash-lite-preview";
+
+function getAiClient() {
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not configured.");
+  }
+
+  return new GoogleGenAI({ apiKey });
+}
+
+function safeString(value: unknown, fallback = "") {
+  return typeof value === "string" ? value.trim() : fallback;
+}
+
+function normalizeArticleDraftPayload(payload: unknown): ArticleDraftInput {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Request body must be a JSON object.");
+  }
+
+  const sourceUrl = safeString((payload as Record<string, unknown>).sourceUrl);
+  const title = safeString((payload as Record<string, unknown>).title);
+  const author = safeString((payload as Record<string, unknown>).author);
+  const content = safeString((payload as Record<string, unknown>).content);
+  const excerpt = safeString((payload as Record<string, unknown>).excerpt);
+  const publishedAt = safeString(
+    (payload as Record<string, unknown>).publishedAt,
+  );
+  const siteName = safeString((payload as Record<string, unknown>).siteName);
+  const language = safeString((payload as Record<string, unknown>).language);
+
+  if (!sourceUrl) {
+    throw new Error("A source URL is required.");
+  }
+
+  try {
+    new URL(sourceUrl);
+  } catch {
+    throw new Error("Source URL must be a valid absolute URL.");
+  }
+
+  if (content.length < 20) {
+    throw new Error("Paste at least 20 characters of article content.");
+  }
+
+  if (publishedAt) {
+    const date = new Date(publishedAt);
+
+    if (Number.isNaN(date.getTime())) {
+      throw new Error("Published date must be a valid date string.");
+    }
+  }
+
+  return {
+    sourceUrl,
+    title,
+    author,
+    content,
+    excerpt,
+    publishedAt,
+    siteName,
+    language,
+  };
+}
 
 export async function POST(req: Request) {
   try {
-    const authHeader = req.headers.get("authorization");
+    const { userId } = await auth();
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return new Response("Unauthorized: No token", { status: 401 });
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const token = authHeader.replace("Bearer ", "");
+    const input = normalizeArticleDraftPayload(await req.json());
+    const supabase = await createClerkSupabaseClientSsr();
 
-    const { data, error } = await tryCatch(
-      verifyToken(token, {
-        secretKey: process.env.CLERK_SECRET_KEY,
-      })
-    );
+    // const { data: existingArticle, error: existingArticleError } =
+    //   await supabase
+    //     .from("saved_links")
+    //     .select("*")
+    //     .eq("user_id", userId)
+    //     .eq("url", input.sourceUrl)
+    //     .limit(1)
+    //     .maybeSingle();
 
-    if (error && data === null) {
-      return new Response("Unauthorized: Invalid token", { status: 401 });
-    }
+    // if (existingArticleError) {
+    //   throw existingArticleError;
+    // }
 
-    const { sub: userId } = data;
+    // if (existingArticle) {
+    //   return NextResponse.json({
+    //     article: existingArticle,
+    //     duplicate: true,
+    //   });
+    // }
 
-    const { content } = (await req.json()) as {
-      content: {
-        url: string;
-        title: string | null | undefined;
-        content: string;
-        textContent: string | null | undefined;
-        length: number | null | undefined;
-        excerpt: string | null | undefined;
-        byline: string | null | undefined;
-        dir: string | null | undefined;
-        siteName: string | null | undefined;
-        lang: string | null | undefined;
-        publishedTime: string | null | undefined;
-      };
-    };
-
+    const ai = getAiClient();
     const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: `
-            You are an intelligent content analyzer.
-
-            Given a plain text input from a webpage (usually an article, blog post, or document), your task is to extract a concise summary and relevant metadata in a structured JSON format.
-
-            Please return your response in the following JSON schema:
-
-            {
-                "title": "<Extracted or inferred title. Leave empty if not available>",
-                "author": "<Extracted author name, if available>",
-                "publication_date": "<Extracted or inferred publication date in ISO 8601 format, leave empty if unknown>",
-                "summary": "<Concise summary in 3–5 sentences>",
-                "tags": ["<Relevant>", "<keywords>", "<and>", "<topics>"],
-                "key_points": ["<Main point 1>", "<Main point 2>", "..."],
-                "tone": "<neutral | informative | persuasive | emotional | etc.>",
-                "read_time_minutes": <Estimated reading time as an integer>,
-                "language": "<Detected language code, e.g., 'en', 'es'>",
-                "sentiment": "<positive | neutral | negative>",
-                "named_entities": ["<Company>", "<Person>", "<Location>", "..."],
-                "quotes": ["<Notable quotes that listed or ones you infer or statement 1>", "<Quote 2>", "..."],
-                "url": "<Original content URL>"
-            }
-
-            The input content will be wrapped in triple quotes like this:
-
-            ${JSON.stringify(content)}
-          `,
+      model,
+      contents: buildSummarizationPrompt(input),
     });
+    const summary = parseSummaryResponse(result.text ?? "");
 
-    const textResponse = result.text ?? "";
-    const cleaned = textResponse.replace(/```(?:json)?/g, "").trim();
-    const parsed = JSON.parse(cleaned);
+    const { data: article, error: insertError } = await supabase
+      .from("saved_links")
+      .insert(buildArticleInsert(userId, input, summary))
+      .select("*")
+      .single();
 
-    const client = await createClerkSupabaseClientSsr();
-    const supabaseData = {
-      user_id: userId,
-      url: content.url,
-      title: parsed.title || content.title,
-      author: content.byline, // 'byline' mapped to 'author'
-      publication_date: content.publishedTime, // mapped from 'published_time'
-      content: content.textContent, // 'text_content' mapped to 'content'
-      excerpt: content.excerpt,
-      direction: content.dir, // 'dir' mapped to 'direction'
-      content_length: content.textContent?.length || 0, // simple content length in characters
-      summary: parsed.summary,
-      tags: parsed.tags,
-      key_points: parsed.key_points,
-      read_time_minutes: parsed.read_time_minutes,
-      tone: parsed.tone,
-      sentiment: parsed.sentiment,
-      named_entities: parsed.named_entities,
-      quotes: parsed.quotes,
-      language: content.lang,
-      // Optional: `created_at` is auto-set in DB; no need to send
-    };
+    if (insertError) {
+      throw insertError;
+    }
+    console.log(article, summary);
+    return NextResponse.json({ article, summary });
+  } catch (error) {
+    console.log("ERRROR", error);
+    console.error("Error summarizing article:", error);
 
-    const res = await client.from("saved_links").insert(supabaseData);
-
-    console.log("Supabase response:", res);
-    console.log("Parsed response:", parsed);
-    console.log(supabaseData, "supabaseData");
-
-    return new Response(cleaned, {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch (err) {
-    console.error("Error:", err);
-    return new Response("Error processing the request", { status: 500 });
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Error processing the request.",
+      },
+      { status: 500 },
+    );
   }
 }

@@ -1,45 +1,51 @@
-import Filter from "@/components/csr-filter";
-import Home from "@/components/ssr-view";
 import { auth } from "@clerk/nextjs/server";
-import React, { Suspense } from "react";
+
+import { getArticleWorkspaceAction } from "@/app/actions/articles";
+import { LibraryWorkspace } from "@/components/library-workspace";
+import { MarketingHome } from "@/components/marketing-home";
 
 const Page = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ terms: string }>;
+  searchParams: Promise<{ terms?: string }>;
 }) => {
   const { userId } = await auth();
 
   if (!userId) {
-    return (
-      //design a beautiful error msg
-      <div className="flex items-center flex-col justify-center h-screen">
-        <h1 className="text-2xl font-bold text-red-500">
-          Please log in to view your saved links.
-        </h1>
-        <p className="text-gray-500">
-          You can log in using the button in the top right corner.
-        </p>
-        <p className="text-gray-500">
-          If you don't have an account, you can sign up for free.
-        </p>
-        <p className="text-gray-500">
-          If you are already logged in, please refresh the page.
-        </p>
-      </div>
-    );
+    return <MarketingHome />;
   }
 
-  return (
-    <div>
-      <div className="container mx-auto p-4">
-        <Filter />
-      </div>
-      <Suspense fallback={<div>Loading...</div>}>
-        <Home searchParams={searchParams} />
-      </Suspense>
-    </div>
-  );
+  const params = await searchParams;
+
+  try {
+    const workspace = await getArticleWorkspaceAction(params.terms);
+
+    return <LibraryWorkspace initialState={workspace} />;
+  } catch (error) {
+    const setupError =
+      error instanceof Error
+        ? error.message
+        : "The library could not connect to Supabase.";
+
+    return (
+      <main className="mx-auto flex w-full max-w-4xl px-5 py-10 lg:px-8 lg:py-12">
+        <div className="glass-panel w-full rounded-2xl p-8 sm:p-10">
+          <p className="eyebrow">Setup required</p>
+          <h1 className="mt-4 text-4xl font-semibold text-zinc-50">
+            The library is ready, but the data layer is not configured yet.
+          </h1>
+          <p className="mt-5 text-base leading-8 text-zinc-300">
+            {setupError}
+          </p>
+          <p className="mt-4 text-sm leading-7 text-zinc-400">
+            Confirm your Supabase URL and anon key are present, then create a
+            Clerk JWT template named <span className="font-medium">supabase</span>{" "}
+            so authenticated requests can satisfy row-level security.
+          </p>
+        </div>
+      </main>
+    );
+  }
 };
 
 export default Page;

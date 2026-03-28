@@ -1,19 +1,26 @@
-import { useSession } from "@clerk/nextjs";
+"use client";
+
+import { useAuth } from "@clerk/nextjs";
 import { createClient } from "@supabase/supabase-js";
 
+function getSupabaseConfig() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url || !anonKey) {
+    throw new Error(
+      "Supabase environment variables are missing. Check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+    );
+  }
+
+  return { url, anonKey };
+}
+
 export function useSupabaseClient() {
-  const { session } = useSession();
-  const supabaseClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      // Session accessed from Clerk SDK, either as Clerk.session (vanilla
-      // JavaScript) or useSession (React)
-      accessToken: async () =>
-        session?.getToken({
-          template: "supabase",
-        }) ?? null,
-    }
-  );
-  return supabaseClient;
+  const { getToken } = useAuth();
+  const { url, anonKey } = getSupabaseConfig();
+
+  return createClient(url, anonKey, {
+    accessToken: async () => (await getToken()) ?? null,
+  });
 }

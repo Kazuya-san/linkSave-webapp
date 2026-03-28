@@ -1,61 +1,42 @@
-import { verifyToken } from "@clerk/nextjs/server";
-import { tryCatch } from "@/utils/tryCatch";
-import { createClerkSupabaseClientSsr } from "@/utils/supabase/server";
+import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
+
+import { listUserArticles } from "@/lib/articles/service";
+import { createClerkSupabaseClientSsr } from "@/utils/supabase/server";
 
 export async function GET(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization");
+    const { userId } = await auth();
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return new Response("Unauthorized: No token", { status: 401 });
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const token = authHeader.replace("Bearer ", "");
-
-    const { data, error } = await tryCatch(
-      verifyToken(token, {
-        secretKey: process.env.CLERK_SECRET_KEY,
-      })
-    );
-
-    if (error && data === null) {
-      return new Response("Unauthorized: Invalid token", { status: 401 });
-    }
-
-    const searchParams = req.nextUrl.searchParams;
-    const terms = searchParams.get("terms")?.split(",") || [];
-
-    console.log("terms2", searchParams);
-
-    const client = await createClerkSupabaseClientSsr();
-
-    // const terms = ["crypto"];
-
-    const orConditions = terms
-      .flatMap((term) => [
-        `title.ilike."*${term}*"`,
-        `summary.ilike."*${term}*"`,
-        `tags.cs.{${term}}`,
-      ])
-      .join(",");
-
-    const call = client.from("saved_links").select();
-
-    if (terms.length > 0) {
-      call.or(orConditions);
-    }
-
-    const { data: supabaseData, error: supaBaseError } = await call.order(
-      "created_at",
-      { ascending: false }
-    );
+    const supabase = await createClerkSupabaseClientSsr();
+    const { filteredArticles, featuredTopics, searchTerms, stats } =
+      await listUserArticles(
+        supabase,
+        userId,
+        req.nextUrl.searchParams.get("terms") ?? undefined,
+      );
 
     return NextResponse.json({
-      supabaseData,
+      items: filteredArticles,
+      featuredTopics,
+      searchTerms,
+      stats,
     });
-  } catch (err) {
-    console.error("Error:", err);
-    return new Response("Error processing the request", { status: 500 });
+  } catch (error) {
+    console.error("Error loading articles:", error);
+
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Error processing the request.",
+      },
+      { status: 500 },
+    );
   }
 }

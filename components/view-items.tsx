@@ -1,238 +1,158 @@
-import React from "react";
+import type { ReactNode } from "react";
+import { ExternalLink, Quote, Tags } from "lucide-react";
 
-interface DynamicDataCardProps {
-  data: Record<string, any>;
-  excludeKeys?: string[];
+import { formatArticleDate } from "@/lib/articles/service";
+import type { ArticleRecord } from "@/lib/articles/types";
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-xl border border-white/6 bg-white/3 p-6">
+      <p className="text-xs text-zinc-500">{title}</p>
+      <div className="mt-4">{children}</div>
+    </section>
+  );
 }
 
-const DynamicDataCard: React.FC<DynamicDataCardProps> = ({
-  data,
-  excludeKeys = ["content", "user_id"], // Default keys to exclude
-}) => {
-  // Helper function to determine if a value should be rendered as an array
-  const isArrayValue = (value: any) => Array.isArray(value) && value.length > 0;
-
-  // Helper function to determine if a value is a primitive (string, number, boolean)
-  const isPrimitive = (value: any) => {
-    return (
-      typeof value === "string" ||
-      typeof value === "number" ||
-      typeof value === "boolean" ||
-      value === null
-    );
-  };
-
-  // Filter out keys that shouldn't be displayed
-  const renderableKeys = Object.keys(data).filter(
-    (key) => !excludeKeys.includes(key)
-  );
-
+export default function DynamicDataCard({ data }: { data: ArticleRecord }) {
   return (
-    <div className="w-full overflow-hidden rounded-lg border border-gray-700 shadow-md hover:shadow-lg transition-all duration-300 bg-gray-800 text-gray-200">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-purple-900 to-indigo-800 text-white p-6">
-        <div className="flex justify-between items-start">
+    <article className="glass-panel overflow-hidden rounded-2xl p-8 sm:p-10">
+      <div className="flex flex-col gap-8 border-b border-white/6 pb-8 lg:flex-row lg:items-start lg:justify-between">
+        <div className="max-w-3xl">
+          <p className="eyebrow">Saved brief</p>
+          <h1 className="mt-4 text-4xl font-semibold text-zinc-50 sm:text-5xl">
+            {data.title || "Untitled brief"}
+          </h1>
+          <p className="mt-5 text-base leading-8 text-zinc-300 sm:text-lg">
+            {data.summary || data.excerpt || "No summary available."}
+          </p>
+        </div>
+
+        <div className="grid min-w-[18rem] gap-4 rounded-xl border border-white/6 bg-white/3 p-5 text-sm text-zinc-400 sm:grid-cols-2 lg:grid-cols-1">
           <div>
-            <h2 className="text-2xl font-bold">{data.title || "Untitled"}</h2>
-            {data.author && (
-              <p className="text-purple-200 mt-1">
-                {data.author !== "Unknown"
-                  ? `By ${data.author}`
-                  : "Author Unknown"}
-              </p>
-            )}
+            <p className="text-xs text-zinc-500">Author</p>
+            <p className="mt-2 font-medium text-zinc-100">
+              {data.author || "Unknown"}
+            </p>
           </div>
-          {data.read_time_minutes && (
-            <span className="inline-flex items-center rounded-full border border-purple-500 bg-purple-800 px-2.5 py-0.5 text-xs font-semibold text-white">
-              {data.read_time_minutes} min read
-            </span>
-          )}
+          <div>
+            <p className="text-xs text-zinc-500">Published</p>
+            <p className="mt-2 font-medium text-zinc-100">
+              {formatArticleDate(data.publication_date)}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-zinc-500">Read time</p>
+            <p className="mt-2 font-medium text-zinc-100">
+              {data.read_time_minutes ?? 0} min
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-zinc-500">Language</p>
+            <p className="mt-2 font-medium uppercase text-zinc-100">
+              {data.language || "N/A"}
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="p-6">
-        {/* Character Traits Section */}
-        {data.excerpt && data.excerpt.includes("Meticulous, Decisive") && (
-          <div className="mb-6">
-            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">
-              Character Traits
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {data.excerpt
-                .split(",")
-                .slice(
-                  0,
-                  data.excerpt.indexOf("He is") > 0
-                    ? data.excerpt.indexOf("He is")
-                    : 8
-                )
-                .map((trait: string, idx: number) => (
-                  <span
-                    key={idx}
-                    className="inline-flex items-center rounded-full bg-indigo-900 px-2.5 py-0.5 text-xs font-semibold text-indigo-200"
+      <div className="mt-8 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <div className="space-y-6">
+          {(data.key_points ?? []).length > 0 ? (
+            <Section title="Key points">
+              <ol className="space-y-3">
+                {(data.key_points ?? []).map((point, index) => (
+                  <li
+                    key={`${point}-${index}`}
+                    className="flex gap-3 text-zinc-300"
                   >
-                    {trait.trim()}
+                    <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-teal-400/10 text-sm font-semibold text-teal-200">
+                      {index + 1}
+                    </span>
+                    <span className="leading-7">{point}</span>
+                  </li>
+                ))}
+              </ol>
+            </Section>
+          ) : null}
+
+          {data.content ? (
+            <Section title="Source content">
+              <div className="max-h-[34rem] overflow-y-auto pr-2 text-sm leading-7 text-zinc-300">
+                <p className="whitespace-pre-line">{data.content}</p>
+              </div>
+            </Section>
+          ) : null}
+        </div>
+
+        <div className="space-y-6">
+          {(data.tags ?? []).length > 0 ? (
+            <Section title="Topics">
+              <div className="flex flex-wrap gap-2">
+                {(data.tags ?? []).map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center gap-2 rounded-lg bg-teal-400/10 px-3 py-2 text-sm font-medium text-teal-200"
+                  >
+                    <Tags className="h-4 w-4" />
+                    {tag}
                   </span>
                 ))}
-            </div>
-          </div>
-        )}
-
-        {/* Render summary first if it exists */}
-        {data.summary && (
-          <div className="mb-6">
-            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">
-              Summary
-            </h3>
-            <p className="text-gray-300 leading-relaxed">{data.summary}</p>
-          </div>
-        )}
-
-        <div className="border-t border-gray-700 my-6"></div>
-
-        {/* Dynamically render all other fields */}
-        {renderableKeys.map((key) => {
-          // Skip keys we've already handled and null/undefined values
-          if (
-            key === "title" ||
-            key === "author" ||
-            key === "summary" ||
-            key === "read_time_minutes" ||
-            data[key] === null ||
-            data[key] === undefined
-          ) {
-            return null;
-          }
-
-          // Format the key for display
-          const displayKey = key
-            .replace(/_/g, " ")
-            .replace(/\b\w/g, (l) => l.toUpperCase());
-
-          return (
-            <div key={key} className="mb-6">
-              <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                {displayKey}
-              </h3>
-
-              {/* Render arrays */}
-              {isArrayValue(data[key]) && (
-                <div>
-                  {key === "tags" || key === "named_entities" ? (
-                    <div className="flex flex-wrap gap-2">
-                      {data[key].map((item: string, idx: number) => (
-                        <span
-                          key={idx}
-                          className="inline-flex items-center rounded-full bg-indigo-900 px-2.5 py-0.5 text-xs font-semibold text-indigo-200 hover:bg-indigo-800"
-                        >
-                          {item}
-                        </span>
-                      ))}
-                    </div>
-                  ) : key === "key_points" ? (
-                    <ul className="space-y-2">
-                      {data[key].map((point: string, idx: number) => (
-                        <li key={idx} className="flex items-start">
-                          <span className="w-6 h-6 rounded-full bg-purple-800 text-purple-200 text-xs flex items-center justify-center mr-2 mt-1">
-                            {idx + 1}
-                          </span>
-                          <span className="text-gray-300">{point}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : key === "quotes" ? (
-                    <div className="max-h-60 rounded-md border border-gray-700 bg-gray-900 p-4 overflow-y-auto">
-                      {data[key].map((quote: string, idx: number) => (
-                        <blockquote
-                          key={idx}
-                          className="border-l-4 border-purple-600 pl-4 italic text-gray-300 mb-3"
-                        >
-                          {quote}
-                        </blockquote>
-                      ))}
-                    </div>
-                  ) : (
-                    <ul className="list-disc list-inside space-y-1 text-gray-300">
-                      {data[key].map((item: any, idx: number) => (
-                        <li key={idx}>
-                          {isPrimitive(item)
-                            ? item.toString()
-                            : JSON.stringify(item)}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-
-              {/* Render primitives */}
-              {isPrimitive(data[key]) && !isArrayValue(data[key]) && (
-                <p className="text-gray-300">
-                  {key === "url" ? (
-                    <a
-                      href={data[key]}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-purple-400 hover:text-purple-300 hover:underline"
-                    >
-                      {data[key]}
-                    </a>
-                  ) : key === "created_at" || key === "publication_date" ? (
-                    data[key] ? (
-                      new Date(data[key]).toLocaleDateString()
-                    ) : (
-                      "Not available"
-                    )
-                  ) : (
-                    data[key].toString()
-                  )}
-                </p>
-              )}
-
-              {/* Render objects */}
-              {!isPrimitive(data[key]) && !isArrayValue(data[key]) && (
-                <pre className="bg-gray-900 p-3 rounded-md text-sm overflow-x-auto text-gray-300">
-                  {JSON.stringify(data[key], null, 2)}
-                </pre>
-              )}
-            </div>
-          );
-        })}
-
-        {/* Full Content Section */}
-        {data.content && !excludeKeys.includes("content") && (
-          <div className="mt-6">
-            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">
-              Full Content
-            </h3>
-            <div className="max-h-96 rounded-md border border-gray-700 bg-gray-900 p-4 overflow-y-auto">
-              <div className="text-gray-300 whitespace-pre-line">
-                {data.content}
               </div>
-            </div>
-          </div>
-        )}
-      </div>
+            </Section>
+          ) : null}
 
-      {/* Footer */}
-      <div className="bg-gray-900 border-t border-gray-700 px-6 py-4 flex justify-between items-center">
-        <div className="text-xs text-gray-500">
-          {data.id && `ID: ${data.id.substring(0, 8)}...`}
+          {(data.named_entities ?? []).length > 0 ? (
+            <Section title="Named entities">
+              <div className="flex flex-wrap gap-2">
+                {(data.named_entities ?? []).map((entity) => (
+                  <span
+                    key={entity}
+                    className="rounded-lg bg-[rgba(255,255,255,0.04)] px-3 py-2 text-sm font-medium text-zinc-300 ring-1 ring-white/8"
+                  >
+                    {entity}
+                  </span>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          {(data.quotes ?? []).length > 0 ? (
+            <Section title="Notable quotes">
+              <div className="space-y-3">
+                {(data.quotes ?? []).map((quote, index) => (
+                  <blockquote
+                    key={`${quote}-${index}`}
+                    className="rounded-xl bg-[rgba(255,255,255,0.04)] px-4 py-4 text-sm italic leading-7 text-zinc-300 ring-1 ring-white/8"
+                  >
+                    <div className="flex gap-3">
+                      <Quote className="mt-1 h-4 w-4 shrink-0 text-teal-300" />
+                      <span>{quote}</span>
+                    </div>
+                  </blockquote>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          <Section title="Source">
+            <a
+              href={data.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-sm font-medium text-zinc-100 underline-offset-4 hover:underline"
+            >
+              Open original article
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          </Section>
         </div>
-        {data.url && (
-          <a
-            href={data.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-purple-400 hover:text-purple-300 hover:underline"
-          >
-            Source
-          </a>
-        )}
       </div>
-    </div>
+    </article>
   );
-};
-
-export default DynamicDataCard;
+}
